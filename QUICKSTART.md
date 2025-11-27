@@ -69,7 +69,7 @@ Claude Desktop 配置文件位于：
     "food-recommender": {
       "command": "python",
       "args": [
-        "g:\\food_mcp\\mcp_server.py"
+        "Food_recommender_MCP\\mcp_server.py"
       ]
     }
   }
@@ -78,7 +78,7 @@ Claude Desktop 配置文件位于：
 
 **注意事项：**
 - 确保 Python 路径正确（如果使用 conda 环境，需要使用完整路径）
-- 确保项目路径正确（这里是 `g:\food_mcp\mcp_server.py`）
+- 确保项目路径正确（这里是 `Food_recommender_MCP\mcp_server.py`）
 - 配置完成后重启 Claude Desktop
 
 如果使用 conda 环境，配置应该是：
@@ -89,7 +89,7 @@ Claude Desktop 配置文件位于：
     "food-recommender": {
       "command": "C:/ProgramData/Anaconda3/envs/your_env_name/python.exe",
       "args": [
-        "g:\\food_mcp\\mcp_server.py"
+        "Food_recommender_MCP\\mcp_server.py"
       ]
     }
   }
@@ -110,7 +110,7 @@ python mcp_server.py --sse --port 8000
 ```json
 {
   "mcpServers": {
-    "food-recommender": {
+    "Food_recommender_MCP": {
       "url": "http://localhost:8000/sse"
     }
   }
