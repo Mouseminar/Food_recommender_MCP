@@ -35,7 +35,7 @@ python test_sse_client.py
 ```json
 {
   "mcpServers": {
-    "food-recommender": {
+    "Food_recommender_MCP": {
       "url": "http://localhost:8000/sse"
     }
   }
