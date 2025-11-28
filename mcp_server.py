@@ -1158,7 +1158,8 @@ def main():
     logger.info(f"[SSE模式] 使用 Ctrl+C 停止服务器")
     logger.info("-" * 60)
     
-    # 启动MCP服务器（直接指定参数，确保绑定到正确的地址和端口）
+    # 启动MCP服务器
+    # FastMCP 2.5+ 版本支持 host/port 参数
     mcp.run(
         transport="sse",
         host="0.0.0.0",
