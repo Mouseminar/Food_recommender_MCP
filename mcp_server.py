@@ -1179,73 +1179,45 @@ if __name__ == "__main__":
                 logger.info("使用 uvicorn 运行 ASGI 应用 (0.0.0.0:%s)", port)
                 uvicorn.run(app, host=os.environ.get("MCP_HOST", "0.0.0.0"), port=port)
             else:
-                logger.info("Couldn't obtain ASGI app from FastMCP; will start a proxy and fallback to mcp.run()")
+                logger.info("Couldn't obtain ASGI app from FastMCP; will attempt to run mcp.run bound to MCP_HOST:MCP_PORT")
 
-                # 启动一个简单的 HTTP 代理，把外部的 MCP_HOST:MCP_PORT 请求转发到
-                # FastMCP 默认会监听的 127.0.0.1:8000。这样阿里云的健康检查可以命中
-                # 9000 端口，而后端服务仍然由 mcp.run() 在 127.0.0.1:8000 提供。
-                target_host = "127.0.0.1"
-                target_port = 8000
+                bind_host = os.environ.get("MCP_HOST", "0.0.0.0")
+                bind_port = port
 
-                class _ProxyHandler(BaseHTTPRequestHandler):
-                    def _proxy_request(self):
-                        try:
-                            conn = http.client.HTTPConnection(target_host, target_port, timeout=10)
-                            # 构造路径
-                            path = self.path
-                            # 过滤掉 Transfer-Encoding header to avoid chunked issues
-                            headers = {k: v for k, v in self.headers.items() if k.lower() != 'transfer-encoding'}
-                            body = None
-                            content_length = self.headers.get('Content-Length')
-                            if content_length:
-                                body = self.rfile.read(int(content_length))
-                            conn.request(self.command, path, body=body, headers=headers)
-                            resp = conn.getresponse()
-                            resp_body = resp.read()
+                # 尝试直接将 host/port 传递给 mcp.run 的常见签名；如果某个签名不可用则回退
+                tried = []
+                # 常见的参数组合
+                attempts = [
+                    {"transport": "sse", "host": bind_host, "port": bind_port},
+                    {"transport": "sse", "addr": bind_host, "port": bind_port},
+                    {"transport": "sse", "bind": f"{bind_host}:{bind_port}"},
+                    {"transport": "sse", "port": bind_port},
+                    {"transport": "sse"},
+                ]
 
-                            # 回写响应
-                            self.send_response(resp.status, resp.reason)
-                            for h, v in resp.getheaders():
-                                # 某些 header 不宜原样传递
-                                if h.lower() in ('transfer-encoding', 'connection', 'content-encoding'):
-                                    continue
-                                self.send_header(h, v)
-                            self.end_headers()
-                            if resp_body:
-                                self.wfile.write(resp_body)
-                        except Exception:
-                            self.send_response(502)
-                            self.end_headers()
-
-                    def do_GET(self):
-                        self._proxy_request()
-
-                    def do_POST(self):
-                        self._proxy_request()
-
-                    def do_PUT(self):
-                        self._proxy_request()
-
-                    def do_DELETE(self):
-                        self._proxy_request()
-
-                    def log_message(self, format, *args):
-                        # 减少噪音，使用 logging
-                        logger.debug("Proxy: %s - %s", self.address_string(), format % args)
-
-                def start_proxy(listen_host, listen_port):
+                ran = False
+                for kwargs in attempts:
                     try:
-                        server = HTTPServer((listen_host, listen_port), _ProxyHandler)
-                        logger.info("启动代理 %s:%s -> %s:%s", listen_host, listen_port, target_host, target_port)
-                        server.serve_forever()
+                        logger.info("尝试使用 mcp.run 参数: %s", kwargs)
+                        mcp.run(**kwargs)
+                        ran = True
+                        break
+                    except TypeError as te:
+                        # 签名不支持，记录并继续尝试其他签名
+                        logger.debug("mcp.run 不支持该签名: %s, 错误: %s", kwargs, te)
+                        tried.append((kwargs, str(te)))
                     except Exception as e:
-                        logger.error("启动代理失败: %s", e)
+                        # 其他错误可能是运行时错误，记录并尝试下一种
+                        logger.warning("调用 mcp.run 时异常 (%s) 使用签名 %s", e, kwargs)
+                        tried.append((kwargs, str(e)))
 
-                proxy_thread = threading.Thread(target=start_proxy, args=(os.environ.get("MCP_HOST", "0.0.0.0"), port), daemon=True)
-                proxy_thread.start()
-
-                # 回退到 mcp.run() 启动后端服务（通常在127.0.0.1:8000）
-                mcp.run(transport="sse")
+                if not ran:
+                    logger.error("所有 mcp.run 绑定尝试失败: %s", tried)
+                    # 最后回退到最简单的调用，试图至少启动服务
+                    try:
+                        mcp.run(transport="sse")
+                    except Exception as e:
+                        logger.exception("回退 mcp.run() 也失败: %s", e)
         except Exception as e:
             logger.warning("使用 uvicorn 启动时出现异常 (%s)，回退到 mcp.run()。", str(e))
             mcp.run(transport="sse")
