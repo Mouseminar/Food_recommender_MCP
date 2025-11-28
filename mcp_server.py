@@ -1184,40 +1184,54 @@ if __name__ == "__main__":
                 bind_host = os.environ.get("MCP_HOST", "0.0.0.0")
                 bind_port = port
 
-                # 尝试直接将 host/port 传递给 mcp.run 的常见签名；如果某个签名不可用则回退
-                tried = []
-                # 常见的参数组合
-                attempts = [
-                    {"transport": "sse", "host": bind_host, "port": bind_port},
-                    {"transport": "sse", "addr": bind_host, "port": bind_port},
-                    {"transport": "sse", "bind": f"{bind_host}:{bind_port}"},
-                    {"transport": "sse", "port": bind_port},
-                    {"transport": "sse"},
-                ]
+                # 优先尝试与示例相同的显式签名：host/port/path/log_level
+                try:
+                    logger.info("尝试使用显式签名 mcp.run(host=%s, port=%s, path=/sse)", bind_host, bind_port)
+                    mcp.run(
+                        transport="sse",
+                        host=bind_host,
+                        port=bind_port,
+                        path="/sse",
+                        log_level="info",
+                    )
+                    ran = True
+                except TypeError as te:
+                    logger.debug("显式签名 mcp.run 不被支持: %s", te)
+                    ran = False
+                except Exception as e:
+                    logger.warning("显式 mcp.run 启动时异常，将回退尝试其他签名: %s", e)
+                    ran = False
 
-                ran = False
-                for kwargs in attempts:
-                    try:
-                        logger.info("尝试使用 mcp.run 参数: %s", kwargs)
-                        mcp.run(**kwargs)
-                        ran = True
-                        break
-                    except TypeError as te:
-                        # 签名不支持，记录并继续尝试其他签名
-                        logger.debug("mcp.run 不支持该签名: %s, 错误: %s", kwargs, te)
-                        tried.append((kwargs, str(te)))
-                    except Exception as e:
-                        # 其他错误可能是运行时错误，记录并尝试下一种
-                        logger.warning("调用 mcp.run 时异常 (%s) 使用签名 %s", e, kwargs)
-                        tried.append((kwargs, str(e)))
-
+                # 如果显式签名未能运行，再尝试其他常见签名
                 if not ran:
-                    logger.error("所有 mcp.run 绑定尝试失败: %s", tried)
-                    # 最后回退到最简单的调用，试图至少启动服务
-                    try:
-                        mcp.run(transport="sse")
-                    except Exception as e:
-                        logger.exception("回退 mcp.run() 也失败: %s", e)
+                    tried = []
+                    attempts = [
+                        {"transport": "sse", "host": bind_host, "port": bind_port},
+                        {"transport": "sse", "addr": bind_host, "port": bind_port},
+                        {"transport": "sse", "bind": f"{bind_host}:{bind_port}"},
+                        {"transport": "sse", "port": bind_port},
+                        {"transport": "sse"},
+                    ]
+
+                    for kwargs in attempts:
+                        try:
+                            logger.info("尝试使用 mcp.run 参数: %s", kwargs)
+                            mcp.run(**kwargs)
+                            ran = True
+                            break
+                        except TypeError as te:
+                            logger.debug("mcp.run 不支持该签名: %s, 错误: %s", kwargs, te)
+                            tried.append((kwargs, str(te)))
+                        except Exception as e:
+                            logger.warning("调用 mcp.run 时异常 (%s) 使用签名 %s", e, kwargs)
+                            tried.append((kwargs, str(e)))
+
+                    if not ran:
+                        logger.error("所有 mcp.run 绑定尝试失败: %s", tried)
+                        try:
+                            mcp.run(transport="sse")
+                        except Exception as e:
+                            logger.exception("回退 mcp.run() 也失败: %s", e)
         except Exception as e:
             logger.warning("使用 uvicorn 启动时出现异常 (%s)，回退到 mcp.run()。", str(e))
             mcp.run(transport="sse")
