@@ -1164,8 +1164,23 @@ if __name__ == "__main__":
         logger.info(f"[SSE模式] 使用 Ctrl+C 停止服务器")
         logger.info("-" * 50)
         
-        # 使用 FastMCP 的 SSE 模式运行
-        mcp.run(transport="sse")
+        # 如果可以获取到 ASGI app，则显式调用 uvicorn.run 来绑定主机与端口，
+        # 否则使用 mcp.run() 回退（兼容旧版本 FastMCP 的行为）
+        try:
+            import uvicorn
+
+            # 尝试从 mcp 实例获取常见的 ASGI app 属性
+            app = getattr(mcp, "asgi", None) or getattr(mcp, "asgi_app", None) or getattr(mcp, "app", None)
+            if app is not None:
+                # uvicorn.run 将替代 mcp.run 并确保正确绑定到 MCP_HOST/MCP_PORT
+                logger.info("使用 uvicorn 运行 ASGI 应用 (0.0.0.0:%s)", port)
+                uvicorn.run(app, host=os.environ.get("MCP_HOST", "0.0.0.0"), port=port)
+            else:
+                logger.info("Couldn't obtain ASGI app from FastMCP; fallback to mcp.run()")
+                mcp.run(transport="sse")
+        except Exception as e:
+            logger.warning("使用 uvicorn 启动时出现异常 (%s)，回退到 mcp.run()。", str(e))
+            mcp.run(transport="sse")
     else:
         # 标准 stdio 模式（用于 Claude Desktop 等客户端）
         logger.info("[Stdio模式] 启动 MCP 服务器")
